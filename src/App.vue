@@ -15,6 +15,19 @@ const endTime = ref<Date | null>(null)
 const remainingMs = ref(0)
 let tickHandle: number | null = null
 
+// Theme toggle (light/dark) using DaisyUI
+const theme = ref<string>(localStorage.getItem('theme') || 'light')
+watch(
+  theme,
+  (t) => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', t)
+      localStorage.setItem('theme', t)
+    }
+  },
+  { immediate: true },
+)
+
 function formatClock(d: Date | null): string {
   if (!d) return '--:--'
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
@@ -406,7 +419,18 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="container" :class="{ center: running }">
-    <h1 class="title">{{ titleText }}</h1>
+    <div class="flex items-center justify-between mb-4">
+      <h1 class="title">{{ titleText }}</h1>
+      <label class="flex items-center gap-2 cursor-pointer">
+        <span class="text-sm text-gray-500">Theme</span>
+        <input
+          type="checkbox"
+          class="toggle"
+          :checked="theme === 'dark'"
+          @change="theme = ($event.target as HTMLInputElement).checked ? 'dark' : 'light'"
+        />
+      </label>
+    </div>
 
     <section v-if="!running" class="picker">
       <h2 class="sr-only">Choose a duration</h2>
@@ -414,7 +438,7 @@ onBeforeUnmount(() => {
         <button
           v-for="m in options"
           :key="m"
-          class="option"
+          class="btn btn-primary"
           :title="`Preview ${m} minute timer expiration`"
           @click="choosePreset(m)"
         >
@@ -422,7 +446,7 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
-      <div v-if="pendingMinutes !== null || pendingExactEnd" class="confirm">
+      <div v-if="pendingMinutes !== null || pendingExactEnd" class="confirm shadow rounded-box">
         <div>
           <template v-if="pendingExactEnd">
             Start a timer until
@@ -440,8 +464,8 @@ onBeforeUnmount(() => {
           Duration {{ formatDuration(pendingDurationMs) }}
         </div>
         <div class="confirm-actions">
-          <button class="confirm-start" @click="confirmStart">Start timer</button>
-          <button class="confirm-cancel" @click="cancelPending">Cancel</button>
+          <button class="btn btn-primary" @click="confirmStart">Start timer</button>
+          <button class="btn" @click="cancelPending">Cancel</button>
         </div>
       </div>
 
@@ -453,10 +477,10 @@ onBeforeUnmount(() => {
           type="number"
           min="1"
           placeholder="e.g. 25"
-          class="custom-input"
+          class="input input-bordered w-28"
           v-model="customMinutes"
         />
-        <button class="custom-start" :disabled="!parsedCustomMinutes" @click="startCustom">
+        <button class="btn btn-secondary" :disabled="!parsedCustomMinutes" @click="startCustom">
           Start
         </button>
       </div>
@@ -469,20 +493,20 @@ onBeforeUnmount(() => {
         <input
           id="precise-end"
           type="datetime-local"
-          class="custom-input"
+          class="input input-bordered w-64"
           v-model="preciseEndLocal"
         />
-        <button class="custom-start" :disabled="!preciseEndIsFuture" @click="previewPreciseEnd">
+        <button class="btn" :disabled="!preciseEndIsFuture" @click="previewPreciseEnd">
           Preview
         </button>
       </div>
       <div class="precise-shortcuts">
         <span class="shortcut-label">Shortcuts:</span>
-        <button class="shortcut" @click="shortcutHalfPast">:30</button>
-        <button class="shortcut" @click="shortcutEndOfHour">:59</button>
-        <button class="shortcut" @click="shortcutNextHour">Next hour</button>
-        <button class="shortcut" @click="shortcutNoon">Noon</button>
-        <button class="shortcut" @click="shortcutEndOfDay">5:00 ET</button>
+        <button class="btn btn-sm" @click="shortcutHalfPast">:30</button>
+        <button class="btn btn-sm" @click="shortcutEndOfHour">:59</button>
+        <button class="btn btn-sm" @click="shortcutNextHour">Next hour</button>
+        <button class="btn btn-sm" @click="shortcutNoon">Noon</button>
+        <button class="btn btn-sm" @click="shortcutEndOfDay">5:00 ET</button>
       </div>
       <p v-if="preciseEndIsFuture && pendingExactEnd === null" class="hover-hint">
         Expires at {{ formatClock(parsedPreciseEnd) }} · Duration
@@ -502,7 +526,7 @@ onBeforeUnmount(() => {
         <span class="label">Expires:</span>
         <span class="value">{{ formatClock(endTime) }}</span>
       </div>
-      <div class="tz-block">
+      <div class="tz-block shadow rounded-box">
         <div class="tz-title">Expires across U.S. timezones</div>
         <ul class="tz-list">
           <li v-for="tz in expiresByZone" :key="tz.zone">
@@ -513,7 +537,7 @@ onBeforeUnmount(() => {
       </div>
       <div class="countdown" :class="{ overdue: remainingMs <= 0 }">{{ countdown }} Remaining</div>
       <div class="actions">
-        <button class="cancel" @click="cancel">Cancel</button>
+        <button class="btn btn-error" @click="cancel">Cancel</button>
       </div>
     </section>
   </main>
