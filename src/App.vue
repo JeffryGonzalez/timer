@@ -4,7 +4,7 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 type Minutes = 5 | 10 | 15 | 75
 
 const options: Minutes[] = [5, 10, 15, 75]
-const hovered = ref<Minutes | null>(null)
+const pendingMinutes = ref<number | null>(null)
 const customMinutes = ref('')
 
 const running = ref(false)
@@ -59,11 +59,10 @@ const countdown = computed(() => {
   return `${sign}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 })
 
-const hoveredExpiresAt = computed(() => {
-  if (!hovered.value) return null
+const pendingExpiresAt = computed(() => {
+  if (pendingMinutes.value == null) return null
   const now = Date.now()
-  const d = new Date(now + hovered.value * 60_000)
-  return d
+  return new Date(now + pendingMinutes.value * 60_000)
 })
 
 const parsedCustomMinutes = computed<number | null>(() => {
@@ -111,8 +110,21 @@ function start(minutes: number) {
 
 function startCustom() {
   if (!parsedCustomMinutes.value) return
-  start(parsedCustomMinutes.value)
-  customMinutes.value = ''
+  pendingMinutes.value = parsedCustomMinutes.value
+}
+
+function choosePreset(m: Minutes) {
+  pendingMinutes.value = m
+}
+
+function confirmStart() {
+  if (pendingMinutes.value == null) return
+  start(pendingMinutes.value)
+  pendingMinutes.value = null
+}
+
+function cancelPending() {
+  pendingMinutes.value = null
 }
 
 onBeforeUnmount(() => clearTimer())
@@ -129,22 +141,23 @@ onBeforeUnmount(() => clearTimer())
           v-for="m in options"
           :key="m"
           class="option"
-          :title="
-            hovered && hovered === m
-              ? `Expires at ${formatClock(hoveredExpiresAt)}`
-              : `Start ${m} minute timer`
-          "
-          @mouseenter="hovered = m"
-          @mouseleave="hovered = null"
-          @click="start(m)"
+          :title="`Preview ${m} minute timer expiration`"
+          @click="choosePreset(m)"
         >
           {{ m }} min
         </button>
       </div>
 
-      <p v-if="hoveredExpiresAt" class="hover-hint">
-        Expires at {{ formatClock(hoveredExpiresAt) }}
-      </p>
+      <div v-if="pendingMinutes !== null" class="confirm">
+        <div>
+          Start a {{ pendingMinutes }}-minute timer?
+          <span class="confirm-expire">It will expire at {{ formatClock(pendingExpiresAt) }}</span>
+        </div>
+        <div class="confirm-actions">
+          <button class="confirm-start" @click="confirmStart">Start timer</button>
+          <button class="confirm-cancel" @click="cancelPending">Cancel</button>
+        </div>
+      </div>
 
       <div class="custom">
         <label for="custom-minutes" class="custom-label">Custom minutes</label>
@@ -161,7 +174,9 @@ onBeforeUnmount(() => clearTimer())
           Start
         </button>
       </div>
-      <p v-if="customExpiresAt" class="hover-hint">Expires at {{ formatClock(customExpiresAt) }}</p>
+      <p v-if="customExpiresAt && pendingMinutes === null" class="hover-hint">
+        Expires at {{ formatClock(customExpiresAt) }}
+      </p>
     </section>
 
     <section v-if="running" class="status">
@@ -267,6 +282,38 @@ onBeforeUnmount(() => clearTimer())
   color: #4b5563;
 }
 
+.confirm {
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border-radius: 0.5rem;
+}
+.confirm-expire {
+  color: #6b7280;
+  margin-left: 0.25rem;
+}
+.confirm-actions {
+  margin-top: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+}
+.confirm-start {
+  background: #111827;
+  color: #fff;
+  border: none;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+.confirm-cancel {
+  background: #e5e7eb;
+  color: #111827;
+  border: none;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
 .custom {
   margin-top: 0.75rem;
   display: flex;
