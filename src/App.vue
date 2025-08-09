@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 type Minutes = 5 | 10 | 15 | 75
 
@@ -61,6 +61,24 @@ const countdown = computed(() => {
   return `${sign}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 })
 
+type Urgency = 'none' | 'warning' | 'danger'
+const urgency = computed<Urgency>(() => {
+  if (!running.value) return 'none'
+  const ms = remainingMs.value
+  if (ms <= 60_000) return 'danger'
+  if (ms <= 120_000) return 'warning'
+  return 'none'
+})
+
+function applyBodyBg(u: Urgency) {
+  if (typeof document === 'undefined') return
+  document.body.classList.remove('bg-warning', 'bg-danger')
+  if (u === 'warning') document.body.classList.add('bg-warning')
+  else if (u === 'danger') document.body.classList.add('bg-danger')
+}
+
+watch(urgency, (u) => applyBodyBg(u), { immediate: true })
+
 const pendingExpiresAt = computed(() => {
   if (pendingExactEnd.value) return pendingExactEnd.value
   if (pendingMinutes.value == null) return null
@@ -105,11 +123,13 @@ function clearTimer() {
 }
 
 function cancel() {
+  exitFullscreenIfActive()
   clearTimer()
   running.value = false
   startTime.value = null
   endTime.value = null
   remainingMs.value = 0
+  applyBodyBg('none')
 }
 
 function start(minutes: number) {
@@ -143,6 +163,20 @@ function startUntil(end: Date) {
   tickHandle = window.setInterval(update, 250)
 }
 
+const plannedMinutes = computed(() => {
+  if (!running.value || !startTime.value || !endTime.value) return null
+  const diffMs = endTime.value.getTime() - startTime.value.getTime()
+  const mins = Math.round(diffMs / 60_000)
+  return Math.max(1, mins)
+})
+
+const titleText = computed(() => {
+  if (running.value && plannedMinutes.value != null) {
+    return `We Are On A ${plannedMinutes.value} Minute Break`
+  }
+  return 'Break Timer'
+})
+
 function startCustom() {
   if (!parsedCustomMinutes.value) return
   pendingExactEnd.value = null
@@ -155,6 +189,8 @@ function choosePreset(m: Minutes) {
 }
 
 function confirmStart() {
+  // Attempt to enter fullscreen while we're still in a user gesture
+  tryEnterFullscreen()
   if (pendingExactEnd.value) {
     startUntil(pendingExactEnd.value)
   } else if (pendingMinutes.value != null) {
@@ -176,6 +212,57 @@ function previewPreciseEnd() {
   if (!preciseEndIsFuture.value || !parsedPreciseEnd.value) return
   pendingMinutes.value = null
   pendingExactEnd.value = parsedPreciseEnd.value
+}
+
+interface VendorElement extends HTMLElement {
+  webkitRequestFullscreen?: () => Promise<void> | void
+  mozRequestFullScreen?: () => Promise<void> | void
+  msRequestFullscreen?: () => Promise<void> | void
+}
+
+interface VendorDocument extends Document {
+  webkitExitFullscreen?: () => Promise<void> | void
+  mozCancelFullScreen?: () => Promise<void> | void
+  msExitFullscreen?: () => Promise<void> | void
+  webkitFullscreenElement?: Element | null
+}
+
+function tryEnterFullscreen() {
+  if (typeof document === 'undefined') return
+  if (document.fullscreenElement) return
+  const el = document.documentElement as VendorElement
+  const req =
+    el.requestFullscreen?.bind(el) ??
+    el.webkitRequestFullscreen?.bind(el) ??
+    el.mozRequestFullScreen?.bind(el) ??
+    el.msRequestFullscreen?.bind(el)
+  if (req) {
+    try {
+      const p = req()
+      if (p instanceof Promise) p.catch(() => {})
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function exitFullscreenIfActive() {
+  if (typeof document === 'undefined') return
+  const doc = document as VendorDocument
+  if (!document.fullscreenElement && !doc.webkitFullscreenElement) return
+  const exit =
+    document.exitFullscreen?.bind(document) ??
+    doc.webkitExitFullscreen?.bind(doc) ??
+    doc.mozCancelFullScreen?.bind(doc) ??
+    doc.msExitFullscreen?.bind(doc)
+  if (exit) {
+    try {
+      const p = exit()
+      if (p instanceof Promise) p.catch(() => {})
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 function toDatetimeLocalValue(d: Date): string {
@@ -311,12 +398,15 @@ function shortcutEndOfDay() {
   setPrecise(new Date(targetMs))
 }
 
-onBeforeUnmount(() => clearTimer())
+onBeforeUnmount(() => {
+  clearTimer()
+  applyBodyBg('none')
+})
 </script>
 
 <template>
-  <main class="container">
-    <h1 class="title">Break Timer</h1>
+  <main class="container" :class="{ center: running }">
+    <h1 class="title">{{ titleText }}</h1>
 
     <section v-if="!running" class="picker">
       <h2 class="sr-only">Choose a duration</h2>
@@ -421,9 +511,7 @@ onBeforeUnmount(() => clearTimer())
           </li>
         </ul>
       </div>
-      <div class="countdown" :class="{ overdue: remainingMs <= 0 }">
-        {{ countdown }}
-      </div>
+      <div class="countdown" :class="{ overdue: remainingMs <= 0 }">{{ countdown }} Remaining</div>
       <div class="actions">
         <button class="cancel" @click="cancel">Cancel</button>
       </div>
@@ -459,6 +547,13 @@ onBeforeUnmount(() => clearTimer())
     'Apple Color Emoji',
     'Segoe UI Emoji';
   color: #1f2937;
+}
+
+.container.center {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .title {
@@ -681,5 +776,15 @@ onBeforeUnmount(() => clearTimer())
 }
 .cancel:hover {
   background: #dc2626;
+}
+</style>
+
+<style>
+/* Global styles to affect the page background */
+body.bg-warning {
+  background: #fef9c3; /* yellow-100 */
+}
+body.bg-danger {
+  background: #fee2e2; /* rose-100 */
 }
 </style>
