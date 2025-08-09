@@ -18,12 +18,45 @@ function formatClock(d: Date | null): string {
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 }
 
+type USTZ = { label: string; zone: string }
+const usTimezones: USTZ[] = [
+  { label: 'Eastern', zone: 'America/New_York' },
+  { label: 'Central', zone: 'America/Chicago' },
+  { label: 'Mountain', zone: 'America/Denver' },
+  { label: 'Arizona', zone: 'America/Phoenix' },
+  { label: 'Pacific', zone: 'America/Los_Angeles' },
+  { label: 'Alaska', zone: 'America/Anchorage' },
+  { label: 'Hawaii', zone: 'Pacific/Honolulu' },
+]
+
+function formatInZone(d: Date | null, timeZone: string): string {
+  if (!d) return '--:--'
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      weekday: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone,
+      timeZoneName: 'short',
+    }).format(d)
+  } catch {
+    // Fallback to local if timezone unsupported
+    return formatClock(d)
+  }
+}
+
+const expiresByZone = computed(() =>
+  usTimezones.map((tz) => ({ ...tz, display: formatInZone(endTime.value, tz.zone) })),
+)
+
 const countdown = computed(() => {
-  const ms = Math.max(0, remainingMs.value)
-  const totalSeconds = Math.floor(ms / 1000)
+  const ms = remainingMs.value
+  const sign = ms < 0 ? '-' : ''
+  const absMs = Math.abs(ms)
+  const totalSeconds = Math.floor(absMs / 1000)
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  return `${sign}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 })
 
 const hoveredExpiresAt = computed(() => {
@@ -70,11 +103,7 @@ function start(minutes: number) {
   const update = () => {
     const now = Date.now()
     const diff = end.getTime() - now
-    remainingMs.value = Math.max(0, diff)
-    if (diff <= 0) {
-      clearTimer()
-      running.value = false
-    }
+    remainingMs.value = diff
   }
   update()
   tickHandle = window.setInterval(update, 250)
@@ -136,6 +165,9 @@ onBeforeUnmount(() => clearTimer())
     </section>
 
     <section v-if="running" class="status">
+      <div v-if="remainingMs <= 0" class="overdue-banner" role="alert" aria-live="assertive">
+        Break is over
+      </div>
       <div class="row">
         <span class="label">Started:</span>
         <span class="value">{{ formatClock(startTime) }}</span>
@@ -144,7 +176,16 @@ onBeforeUnmount(() => clearTimer())
         <span class="label">Expires:</span>
         <span class="value">{{ formatClock(endTime) }}</span>
       </div>
-      <div class="countdown" :class="{ done: remainingMs === 0 }">
+      <div class="tz-block">
+        <div class="tz-title">Expires across U.S. timezones</div>
+        <ul class="tz-list">
+          <li v-for="tz in expiresByZone" :key="tz.zone">
+            <span class="tz-label">{{ tz.label }}</span>
+            <span class="tz-time">{{ tz.display }}</span>
+          </li>
+        </ul>
+      </div>
+      <div class="countdown" :class="{ overdue: remainingMs <= 0 }">
         {{ countdown }}
       </div>
       <div class="actions">
@@ -264,6 +305,16 @@ onBeforeUnmount(() => clearTimer())
   padding-top: 1rem;
 }
 
+.overdue-banner {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+}
+
 .row {
   display: flex;
   gap: 0.5rem;
@@ -277,6 +328,39 @@ onBeforeUnmount(() => clearTimer())
   font-variant-numeric: tabular-nums;
 }
 
+.tz-block {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+}
+.tz-title {
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.25rem;
+}
+.tz-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.tz-list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.25rem 0;
+  border-top: 1px dashed #e5e7eb;
+}
+.tz-list li:first-child {
+  border-top: none;
+}
+.tz-label {
+  color: #6b7280;
+}
+.tz-time {
+  font-variant-numeric: tabular-nums;
+}
+
 .countdown {
   margin-top: 0.75rem;
   font-size: 3rem;
@@ -284,7 +368,7 @@ onBeforeUnmount(() => clearTimer())
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
-.countdown.done {
+.countdown.overdue {
   color: #dc2626;
 }
 
