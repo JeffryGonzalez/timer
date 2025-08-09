@@ -17,6 +17,7 @@ let tickHandle: number | null = null
 
 // Theme toggle (light/dark) using DaisyUI
 const theme = ref<string>(localStorage.getItem('theme') || 'light')
+const themeLabel = computed(() => (theme.value === 'dark' ? 'Dark' : 'Light'))
 watch(
   theme,
   (t) => {
@@ -422,7 +423,7 @@ onBeforeUnmount(() => {
     <div class="flex items-center justify-between mb-4">
       <h1 class="title">{{ titleText }}</h1>
       <label class="flex items-center gap-2 cursor-pointer">
-        <span class="text-sm text-gray-500">Theme</span>
+        <span class="text-sm opacity-80">{{ themeLabel }}</span>
         <input
           type="checkbox"
           class="toggle"
@@ -570,7 +571,7 @@ onBeforeUnmount(() => {
     Arial,
     'Apple Color Emoji',
     'Segoe UI Emoji';
-  color: #1f2937;
+  color: oklch(var(--bc));
 }
 
 .container.center {
@@ -619,18 +620,18 @@ onBeforeUnmount(() => {
 
 .hover-hint {
   margin-top: 0.5rem;
-  color: #4b5563;
+  color: oklch(var(--bc) / 0.7);
 }
 
 .confirm {
   margin-top: 0.75rem;
   padding: 0.75rem 1rem;
-  border: 1px solid #e5e7eb;
-  background: #f9fafb;
+  border: 1px solid oklch(var(--b3));
+  background: oklch(var(--b2));
   border-radius: 0.5rem;
 }
 .confirm-expire {
-  color: #6b7280;
+  color: oklch(var(--bc) / 0.7);
   margin-left: 0.25rem;
 }
 .confirm-actions {
@@ -640,7 +641,7 @@ onBeforeUnmount(() => {
 }
 .confirm-note {
   margin-top: 0.25rem;
-  color: #6b7280;
+  color: oklch(var(--bc) / 0.7);
 }
 .confirm-start {
   background: #111827;
@@ -668,7 +669,7 @@ onBeforeUnmount(() => {
   width: 16rem;
 }
 .custom-label {
-  color: #6b7280;
+  color: oklch(var(--bc) / 0.7);
 }
 .custom-input {
   width: 7rem;
@@ -678,8 +679,8 @@ onBeforeUnmount(() => {
   outline: none;
 }
 .custom-input:focus {
-  border-color: #111827;
-  box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.15);
+  border-color: oklch(var(--bc) / 0.4);
+  box-shadow: 0 0 0 3px color-mix(in oklch, oklch(var(--bc)) 15%, transparent);
 }
 .custom-start {
   background: #111827;
@@ -701,18 +702,18 @@ onBeforeUnmount(() => {
   margin-top: 0.5rem;
 }
 .shortcut-label {
-  color: #6b7280;
+  color: oklch(var(--bc) / 0.7);
 }
 .shortcut {
-  background: #f3f4f6;
-  color: #111827;
-  border: 1px solid #e5e7eb;
+  background: oklch(var(--b2));
+  color: oklch(var(--bc));
+  border: 1px solid oklch(var(--b3));
   padding: 0.25rem 0.5rem;
   border-radius: 0.375rem;
   cursor: pointer;
 }
 .shortcut:hover {
-  background: #e5e7eb;
+  background: oklch(var(--b3));
 }
 
 .status {
@@ -721,9 +722,9 @@ onBeforeUnmount(() => {
 }
 
 .overdue-banner {
-  background: #fee2e2;
-  color: #991b1b;
-  border: 1px solid #fecaca;
+  background: color-mix(in oklch, oklch(var(--er)) 15%, transparent);
+  color: oklch(var(--er));
+  border: 1px solid oklch(var(--er));
   padding: 0.5rem 0.75rem;
   border-radius: 0.5rem;
   font-weight: 700;
@@ -736,7 +737,7 @@ onBeforeUnmount(() => {
   margin: 0.25rem 0;
 }
 .label {
-  color: #6b7280;
+  color: oklch(var(--bc) / 0.7);
   min-width: 4.5rem;
 }
 .value {
@@ -746,13 +747,13 @@ onBeforeUnmount(() => {
 .tz-block {
   margin-top: 0.5rem;
   padding: 0.5rem 0.75rem;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
+  background: oklch(var(--b2));
+  border: 1px solid oklch(var(--b3));
   border-radius: 0.5rem;
 }
 .tz-title {
   font-weight: 600;
-  color: #374151;
+  color: oklch(var(--bc));
   margin-bottom: 0.25rem;
 }
 .tz-list {
@@ -770,7 +771,7 @@ onBeforeUnmount(() => {
   border-top: none;
 }
 .tz-label {
-  color: #6b7280;
+  color: oklch(var(--bc) / 0.7);
 }
 .tz-time {
   font-variant-numeric: tabular-nums;
@@ -784,7 +785,7 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 .countdown.overdue {
-  color: #dc2626;
+  color: oklch(var(--er));
 }
 
 .actions {
@@ -806,9 +807,9 @@ onBeforeUnmount(() => {
 <style>
 /* Global styles to affect the page background */
 body.bg-warning {
-  background: #fef9c3; /* yellow-100 */
+  background: color-mix(in oklch, oklch(var(--wa)) 20%, transparent);
 }
 body.bg-danger {
-  background: #fee2e2; /* rose-100 */
+  background: color-mix(in oklch, oklch(var(--er)) 20%, transparent);
 }
 </style>
