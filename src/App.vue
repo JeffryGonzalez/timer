@@ -5,7 +5,9 @@ type Minutes = 5 | 10 | 15 | 75
 
 const options: Minutes[] = [5, 10, 15, 75]
 const pendingMinutes = ref<number | null>(null)
+const pendingExactEnd = ref<Date | null>(null)
 const customMinutes = ref('')
+const preciseEndLocal = ref('')
 
 const running = ref(false)
 const startTime = ref<Date | null>(null)
@@ -60,10 +62,15 @@ const countdown = computed(() => {
 })
 
 const pendingExpiresAt = computed(() => {
+  if (pendingExactEnd.value) return pendingExactEnd.value
   if (pendingMinutes.value == null) return null
   const now = Date.now()
   return new Date(now + pendingMinutes.value * 60_000)
 })
+
+const pendingDurationMs = computed<number | null>(() =>
+  pendingExactEnd.value ? pendingExactEnd.value.getTime() - Date.now() : null,
+)
 
 const parsedCustomMinutes = computed<number | null>(() => {
   const n = Number(customMinutes.value)
@@ -75,6 +82,20 @@ const customExpiresAt = computed(() => {
   if (!parsedCustomMinutes.value) return null
   return new Date(Date.now() + parsedCustomMinutes.value * 60_000)
 })
+
+const parsedPreciseEnd = computed<Date | null>(() => {
+  if (!preciseEndLocal.value) return null
+  const d = new Date(preciseEndLocal.value)
+  return Number.isNaN(d.getTime()) ? null : d
+})
+
+const preciseEndIsFuture = computed(() => {
+  return parsedPreciseEnd.value != null && parsedPreciseEnd.value.getTime() > Date.now()
+})
+
+const preciseDurationMs = computed(() =>
+  parsedPreciseEnd.value ? parsedPreciseEnd.value.getTime() - Date.now() : 0,
+)
 
 function clearTimer() {
   if (tickHandle !== null) {
@@ -108,23 +129,186 @@ function start(minutes: number) {
   tickHandle = window.setInterval(update, 250)
 }
 
+function startUntil(end: Date) {
+  clearTimer()
+  const start = new Date()
+  startTime.value = start
+  endTime.value = end
+  running.value = true
+  const update = () => {
+    const now = Date.now()
+    remainingMs.value = end.getTime() - now
+  }
+  update()
+  tickHandle = window.setInterval(update, 250)
+}
+
 function startCustom() {
   if (!parsedCustomMinutes.value) return
+  pendingExactEnd.value = null
   pendingMinutes.value = parsedCustomMinutes.value
 }
 
 function choosePreset(m: Minutes) {
+  pendingExactEnd.value = null
   pendingMinutes.value = m
 }
 
 function confirmStart() {
-  if (pendingMinutes.value == null) return
-  start(pendingMinutes.value)
+  if (pendingExactEnd.value) {
+    startUntil(pendingExactEnd.value)
+  } else if (pendingMinutes.value != null) {
+    start(pendingMinutes.value)
+  } else {
+    return
+  }
   pendingMinutes.value = null
+  pendingExactEnd.value = null
+  // keep preciseEndLocal as-is so the user can adjust if needed
 }
 
 function cancelPending() {
   pendingMinutes.value = null
+  pendingExactEnd.value = null
+}
+
+function previewPreciseEnd() {
+  if (!preciseEndIsFuture.value || !parsedPreciseEnd.value) return
+  pendingMinutes.value = null
+  pendingExactEnd.value = parsedPreciseEnd.value
+}
+
+function toDatetimeLocalValue(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${y}-${m}-${day}T${hh}:${mm}`
+}
+
+function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
+}
+
+function setPrecise(date: Date) {
+  // ensure minute precision for datetime-local
+  date.setSeconds(0, 0)
+  preciseEndLocal.value = toDatetimeLocalValue(date)
+  // immediately preview to show confirmation
+  if (date.getTime() > Date.now()) {
+    pendingMinutes.value = null
+    pendingExactEnd.value = date
+  }
+}
+
+function shortcutHalfPast() {
+  const now = new Date()
+  const d = new Date(now)
+  if (now.getMinutes() >= 30) d.setHours(now.getHours() + 1)
+  d.setMinutes(30, 0, 0)
+  setPrecise(d)
+}
+
+function shortcutEndOfHour() {
+  const now = new Date()
+  const d = new Date(now)
+  d.setMinutes(59, 0, 0)
+  if (d.getTime() <= now.getTime()) {
+    d.setHours(d.getHours() + 1)
+    d.setMinutes(59, 0, 0)
+  }
+  setPrecise(d)
+}
+
+function shortcutNextHour() {
+  const now = new Date()
+  const d = new Date(now)
+  d.setHours(now.getHours() + 1, 0, 0, 0)
+  setPrecise(d)
+}
+
+function shortcutNoon() {
+  const now = new Date()
+  const d = new Date(now)
+  d.setHours(12, 0, 0, 0)
+  if (d.getTime() <= now.getTime()) d.setDate(d.getDate() + 1)
+  setPrecise(d)
+}
+
+function shortcutEndOfDay() {
+  // Compute next 5:00 PM Eastern Time and set as precise end
+  const timeZone = 'America/New_York'
+  const now = new Date()
+  // Get current date parts in ET
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour12: false,
+  })
+  const partsNow = dtf.formatToParts(now)
+  const map: Record<string, string> = {}
+  for (const p of partsNow) map[p.type] = p.value
+  let year = Number(map.year)
+  let month = Number(map.month)
+  let day = Number(map.day)
+
+  // Helper to get timezone offset at a timestamp
+  const getOffsetMs = (ts: number) => {
+    const dtfFull = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    })
+    const parts = dtfFull.formatToParts(new Date(ts))
+    const m: Record<string, string> = {}
+    for (const p of parts) m[p.type] = p.value
+    const asUTC = Date.UTC(
+      Number(m.year),
+      Number(m.month) - 1,
+      Number(m.day),
+      Number(m.hour),
+      Number(m.minute),
+      Number(m.second),
+    )
+    return asUTC - ts
+  }
+
+  const zonedTimeToUtc = (y: number, mo: number, d: number, h: number, mi: number) => {
+    const initial = Date.UTC(y, mo - 1, d, h, mi, 0, 0)
+    const off1 = getOffsetMs(initial)
+    const guess = initial - off1
+    const off2 = getOffsetMs(guess)
+    return initial - off2
+  }
+
+  // Target 17:00 ET today
+  let targetMs = zonedTimeToUtc(year, month, day, 17, 0)
+  if (targetMs <= now.getTime()) {
+    // move to tomorrow 17:00 ET
+    const todayInEt = new Date(zonedTimeToUtc(year, month, day, 12, 0))
+    const tomorrowEt = new Date(todayInEt.getTime() + 24 * 60 * 60 * 1000)
+    const partsTomorrow = dtf.formatToParts(tomorrowEt)
+    const mt: Record<string, string> = {}
+    for (const p of partsTomorrow) mt[p.type] = p.value
+    year = Number(mt.year)
+    month = Number(mt.month)
+    day = Number(mt.day)
+    targetMs = zonedTimeToUtc(year, month, day, 17, 0)
+  }
+
+  setPrecise(new Date(targetMs))
 }
 
 onBeforeUnmount(() => clearTimer())
@@ -134,7 +318,7 @@ onBeforeUnmount(() => clearTimer())
   <main class="container">
     <h1 class="title">Break Timer</h1>
 
-    <section class="picker">
+    <section v-if="!running" class="picker">
       <h2 class="sr-only">Choose a duration</h2>
       <div class="buttons">
         <button
@@ -148,10 +332,22 @@ onBeforeUnmount(() => clearTimer())
         </button>
       </div>
 
-      <div v-if="pendingMinutes !== null" class="confirm">
+      <div v-if="pendingMinutes !== null || pendingExactEnd" class="confirm">
         <div>
-          Start a {{ pendingMinutes }}-minute timer?
-          <span class="confirm-expire">It will expire at {{ formatClock(pendingExpiresAt) }}</span>
+          <template v-if="pendingExactEnd">
+            Start a timer until
+            <span class="confirm-expire">{{ formatClock(pendingExpiresAt) }}</span>
+            ?
+          </template>
+          <template v-else>
+            Start a {{ pendingMinutes }}-minute timer?
+            <span class="confirm-expire"
+              >It will expire at {{ formatClock(pendingExpiresAt) }}</span
+            >
+          </template>
+        </div>
+        <div v-if="pendingExactEnd && pendingDurationMs" class="confirm-note">
+          Duration {{ formatDuration(pendingDurationMs) }}
         </div>
         <div class="confirm-actions">
           <button class="confirm-start" @click="confirmStart">Start timer</button>
@@ -176,6 +372,31 @@ onBeforeUnmount(() => clearTimer())
       </div>
       <p v-if="customExpiresAt && pendingMinutes === null" class="hover-hint">
         Expires at {{ formatClock(customExpiresAt) }}
+      </p>
+
+      <div class="custom precise">
+        <label for="precise-end" class="custom-label">Precise end time</label>
+        <input
+          id="precise-end"
+          type="datetime-local"
+          class="custom-input"
+          v-model="preciseEndLocal"
+        />
+        <button class="custom-start" :disabled="!preciseEndIsFuture" @click="previewPreciseEnd">
+          Preview
+        </button>
+      </div>
+      <div class="precise-shortcuts">
+        <span class="shortcut-label">Shortcuts:</span>
+        <button class="shortcut" @click="shortcutHalfPast">:30</button>
+        <button class="shortcut" @click="shortcutEndOfHour">:59</button>
+        <button class="shortcut" @click="shortcutNextHour">Next hour</button>
+        <button class="shortcut" @click="shortcutNoon">Noon</button>
+        <button class="shortcut" @click="shortcutEndOfDay">5:00 ET</button>
+      </div>
+      <p v-if="preciseEndIsFuture && pendingExactEnd === null" class="hover-hint">
+        Expires at {{ formatClock(parsedPreciseEnd) }} · Duration
+        {{ formatDuration(preciseDurationMs) }}
       </p>
     </section>
 
@@ -298,6 +519,10 @@ onBeforeUnmount(() => clearTimer())
   display: flex;
   gap: 0.5rem;
 }
+.confirm-note {
+  margin-top: 0.25rem;
+  color: #6b7280;
+}
 .confirm-start {
   background: #111827;
   color: #fff;
@@ -319,6 +544,9 @@ onBeforeUnmount(() => clearTimer())
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+.custom.precise .custom-input {
+  width: 16rem;
 }
 .custom-label {
   color: #6b7280;
@@ -345,6 +573,27 @@ onBeforeUnmount(() => clearTimer())
 .custom-start:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.precise-shortcuts {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.shortcut-label {
+  color: #6b7280;
+}
+.shortcut {
+  background: #f3f4f6;
+  color: #111827;
+  border: 1px solid #e5e7eb;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+.shortcut:hover {
+  background: #e5e7eb;
 }
 
 .status {
