@@ -420,17 +420,19 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="container" :class="{ center: running }">
-    <div class="flex items-center justify-between mb-4">
+    <!-- Absolute theme picker positioned at the top-right of the page -->
+    <label class="absolute top-4 right-4 z-50 flex items-center gap-2 cursor-pointer">
+      <span class="text-sm opacity-80">{{ themeLabel }}</span>
+      <input
+        type="checkbox"
+        class="toggle"
+        :checked="theme === 'dark'"
+        @change="theme = ($event.target as HTMLInputElement).checked ? 'dark' : 'light'"
+      />
+    </label>
+
+    <div class="mb-4">
       <h1 class="title">{{ titleText }}</h1>
-      <label class="flex items-center gap-2 cursor-pointer">
-        <span class="text-sm opacity-80">{{ themeLabel }}</span>
-        <input
-          type="checkbox"
-          class="toggle"
-          :checked="theme === 'dark'"
-          @change="theme = ($event.target as HTMLInputElement).checked ? 'dark' : 'light'"
-        />
-      </label>
     </div>
 
     <section v-if="!running" class="picker">
